@@ -1,0 +1,123 @@
+#!/usr/bin/env node
+
+const fs = require('fs');
+
+/**
+ * @param {string} str1 
+ * @param {string} str2 
+ * @returns {number} 
+ */
+function levenshteinDistance(str1, str2) {
+  const len1 = str1.length;
+  const len2 = str2.length;
+
+  const dp = Array(len1 + 1)
+      .fill(null)
+      .map(() => Array(len2 + 1)
+      .fill(null));
+
+  for (let i = 0; i <= len1; i++) {
+    dp[i][0] = i;
+  }
+  for (let j = 0; j <= len2; j++) {
+    dp[0][j] = j;
+  }
+
+  for (let i = 1; i <= len1; i++) {
+    for (let j = 1; j <= len2; j++) {
+      const cost = str1[i - 1] === str2[j - 1] ? 0 : 1;
+      dp[i][j] = Math.min(
+        dp[i - 1][j] + 1,
+        dp[i][j - 1] + 1,
+        dp[i - 1][j - 1] + cost
+      );
+    }
+  }
+
+  return dp[len1][len2];
+}
+
+/**
+ * @param {string} name
+ * @param {string} email 
+ * @returns {boolean} 
+ */
+function nameMatchesEmail(name, email) {
+  const nameFromEmail = email.split('@')[0]
+    .toLowerCase()
+    .split('')
+    .filter(c => name.includes(c))
+    .join('');
+
+  return levenshteinDistance(name, nameFromEmail) < name.length / 2
+}
+
+/**
+ * @typedef {{
+ *   text: string;
+ *   account_email: string | null;
+ *   email: string | null;
+ * }} SampleData
+ */
+/**
+ * @typedef {{
+ *   id: number;
+ *   name: string;
+ *   email: string;
+ * }} User
+ */
+(async () => {
+  
+  const users = /** @type {User[]} */(JSON.parse(fs.readFileSync('./users.json', 'utf8')))
+    .filter(((v, i, a) => a.findIndex(t => t.email === v.email) === i))
+
+  const emails = 
+    /** @type {SampleData[]} */(
+      JSON.parse(
+        fs.readFileSync('./sample_data.json', 'utf8')
+      )
+    )
+    .reduce((acc, { email, account_email }) => {
+      if (email) acc.push(email)
+      if (account_email) acc.push(account_email)
+      return acc
+    }, /** @type {Array<string>} */([]))
+  /**
+   * @typedef {{
+   *   recognized: { name: string; user_email: string; related_emails: string[] }[];
+   *   not_recognized: string[];
+   * }} Result
+   */
+
+  /** @type {Result} */
+  const res = {
+    recognized: users.map(user => ({ 
+      name: user.name.toLowerCase().trim().replace(/\s+/g, ''),
+      user_email: user.email,
+      related_emails: [] 
+    })),
+    not_recognized: [],
+  }
+
+  for (const email of emails) {
+    const i = res.recognized.findIndex(({ name }) => nameMatchesEmail(name, email))
+
+    if (i !== -1) {
+      res.recognized[i].related_emails.push(email)
+    } else {
+      res.not_recognized.push(email)
+    }
+  }
+
+  console.log(JSON.stringify({
+    recognized: res.recognized.map(({user_email, related_emails}) => {
+      return {
+        user_email,
+        related_emails
+      }
+    }),
+    not_recognized: res.not_recognized
+  }, null, 2))
+})()
+
+
